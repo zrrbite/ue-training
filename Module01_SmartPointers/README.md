@@ -416,14 +416,76 @@ TSharedPtr<FData, ESPMode::NotThreadSafe> FastPtr =
 
 ---
 
+## Examples Overview
+
+The `Examples/` directory contains practical, working code demonstrating each concept:
+
+1. **01_UObjectPointers.h** - UObject pointer management and garbage collection patterns
+2. **02_TSharedPtr.h** - Shared ownership for non-UObjects
+3. **03_TSharedRef.h** - Non-nullable shared references
+4. **04_TWeakPtr.h** - Breaking circular references and observer patterns
+5. **05_TUniquePtr.h** - Exclusive ownership and RAII patterns
+6. **06_RealWorld_Combined.h** - Complete game system using all pointer types together
+
+## Exercises Overview
+
+The `Exercises/` directory contains hands-on practice problems:
+
+1. **Exercise01_BasicPointers.h** - Fix common mistakes and choose appropriate pointer types
+   - **Exercise01_BasicPointers_Solution.h** - Complete solutions with explanations
+
+2. **Exercise02_RealWorld.h** - Build a quest and inventory system
+   - **Exercise02_RealWorld_Solution.h** - Complete implementation with best practices
+
+## Learning Path
+
+### Recommended Order:
+1. Read through this README thoroughly
+2. Study each example file in order (01-06)
+3. Attempt Exercise 01 without looking at the solution
+4. Check your solution against Exercise01_BasicPointers_Solution.h
+5. Attempt Exercise 02 (more challenging, real-world scenario)
+6. Study the solution and compare approaches
+7. Experiment in your own Unreal project
+8. Move on to Module 2: Task System (TTask)
+
+### Key Concepts to Master:
+- When to use UObject pointers vs smart pointers
+- Difference between TSharedPtr and TSharedRef
+- Using TWeakPtr to break circular references
+- TUniquePtr for exclusive ownership and RAII
+- Thread safety implications (covered more in Module 2)
+
 ## Next Steps
 
-1. Review the examples in `Examples/` directory
-2. Complete the exercises in `Exercises/` directory
-3. Experiment with the different pointer types in a test project
-4. Move on to Module 2: Task System (TTask)
+1. Work through all examples in order
+2. Complete both exercises
+3. Create your own test scenarios in an Unreal project
+4. Review the decision matrix when choosing pointer types
+5. Move on to Module 2: Task System
 
 ## Additional Resources
 
 - [Unreal Engine Documentation: Smart Pointers](https://docs.unrealengine.com/en-US/ProgrammingAndScripting/ProgrammingWithCPP/SmartPointerLibrary/)
 - [Unreal Engine Documentation: Garbage Collection](https://docs.unrealengine.com/en-US/ProgrammingAndScripting/ProgrammingWithCPP/UnrealArchitecture/Objects/Optimizations/)
+- [Unreal Engine Source: SharedPointer.h](https://github.com/EpicGames/UnrealEngine/blob/release/Engine/Source/Runtime/Core/Public/Templates/SharedPointer.h)
+
+## Quick Reference Card
+
+```cpp
+// UObject (Unreal's GC)
+UPROPERTY()
+UMyObject* Obj;                          // Strong reference
+TWeakObjectPtr<UMyObject> WeakObj;       // Weak reference
+
+// Non-UObject Smart Pointers
+TSharedPtr<FData> Shared;                // Shared, can be null
+TSharedRef<FData> Ref;                   // Shared, never null
+TWeakPtr<FData> Weak;                    // Weak, doesn't affect lifetime
+TUniquePtr<FData> Unique;                // Exclusive ownership
+
+// Creation
+auto Ptr = MakeShared<FData>();          // Preferred
+auto Ref = MakeShared<FData>().ToSharedRef();
+auto Unique = MakeUnique<FData>();
+```
