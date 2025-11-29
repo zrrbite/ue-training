@@ -165,11 +165,35 @@ void ProcessDataAsync()
 
 ---
 
-## Legacy AsyncTask System
+## AsyncTask System
 
-### Overview
+### Overview and Status
 
-The legacy `AsyncTask` function predates `Tasks::FTask`. It's still widely used and supported.
+⚠️ **Important Context:** `AsyncTask` is **NOT officially deprecated** but is considered the legacy approach in UE5+.
+
+**What This Means:**
+- ✅ `AsyncTask` is still fully supported and functional
+- ✅ Existing code using `AsyncTask` does not need to be rewritten
+- ✅ `AsyncTask` is fine for simple thread dispatching
+- 🔄 **For new code in UE5+**, prefer `Tasks::FTask` for better features
+- 🔄 Epic recommends migrating to Tasks System for improved performance and capabilities
+
+**Key Differences:**
+
+| Feature | AsyncTask | Tasks::FTask |
+|---------|-----------|--------------|
+| Status | Legacy, fully supported | Modern, recommended for UE5+ |
+| Syntax | Function-based | Object-based with better API |
+| Dependencies | Manual nesting | Built-in Prerequisites |
+| Return Values | Via callbacks only | Direct GetResult() support |
+| Debugging | Limited | Better profiling integration |
+| Backend | TaskGraph | Same TaskGraph (same performance) |
+
+**When to Use Each:**
+- **Use AsyncTask** - Maintaining existing code, simple thread dispatch, game thread callbacks
+- **Use Tasks::FTask** - New UE5 code, complex dependencies, need return values, better debugging
+
+Both systems use the **same underlying TaskGraph backend**, so performance is equivalent.
 
 ### Basic Usage
 
@@ -229,6 +253,35 @@ void LoadAndProcessData()
     });
 }
 ```
+
+### Modern Alternative with Tasks::FTask
+
+```cpp
+void LoadAndProcessDataModern()
+{
+    TWeakObjectPtr<UMyClass> WeakThis(this);
+
+    // Background task
+    UE::Tasks::Launch(UE_SOURCE_LOCATION, [WeakThis]()
+    {
+        // Load and process on background thread
+        TArray<uint8> RawData = LoadFileFromDisk();
+        TArray<FProcessedData> ProcessedData = ProcessRawData(RawData);
+
+        // Return to game thread (still use AsyncTask for this!)
+        AsyncTask(ENamedThreads::GameThread, [WeakThis, ProcessedData]()
+        {
+            if (WeakThis.IsValid())
+            {
+                WeakThis->ApplyProcessedData(ProcessedData);
+                WeakThis->OnLoadComplete.Broadcast();
+            }
+        });
+    });
+}
+```
+
+**Note:** Even with `Tasks::FTask`, you still use `AsyncTask(ENamedThreads::GameThread, ...)` for game thread callbacks, as the Tasks System doesn't execute on the GameThread directly.
 
 ---
 
@@ -726,17 +779,118 @@ for (const TArray<int32>& Results : PerTaskResults)
 
 ---
 
+## Migration Guide: AsyncTask to Tasks::FTask
+
+### Should You Migrate?
+
+**✅ Migrate if:**
+- Starting new UE5 project
+- Need task dependencies (prerequisites)
+- Want better debugging/profiling
+- Need to return values from tasks
+- Building complex async workflows
+
+**❌ Don't need to migrate if:**
+- Working on existing UE4 project
+- Simple thread dispatching is sufficient
+- Code is working fine and stable
+- No time for refactoring non-critical code
+
+### Migration Examples
+
+**Before (AsyncTask):**
+```cpp
+AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this]()
+{
+    int32 Result = HeavyCalculation();
+
+    AsyncTask(ENamedThreads::GameThread, [this, Result]()
+    {
+        ApplyResult(Result);
+    });
+});
+```
+
+**After (Tasks::FTask):**
+```cpp
+TWeakObjectPtr<UMyClass> WeakThis(this);
+
+UE::Tasks::Launch(UE_SOURCE_LOCATION, [WeakThis]()
+{
+    int32 Result = HeavyCalculation();
+
+    AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
+    {
+        if (WeakThis.IsValid())
+        {
+            WeakThis->ApplyResult(Result);
+        }
+    });
+});
+```
+
+**With Dependencies (only possible with Tasks::FTask):**
+```cpp
+auto LoadTask = UE::Tasks::Launch(UE_SOURCE_LOCATION, []() {
+    return LoadData();
+});
+
+auto ProcessTask = UE::Tasks::Launch(
+    UE_SOURCE_LOCATION,
+    [LoadTask]() { return ProcessData(LoadTask.GetResult()); },
+    UE::Tasks::Prerequisites(LoadTask)
+);
+
+auto SaveTask = UE::Tasks::Launch(
+    UE_SOURCE_LOCATION,
+    [ProcessTask]() { SaveData(ProcessTask.GetResult()); },
+    UE::Tasks::Prerequisites(ProcessTask)
+);
+```
+
+### Key Migration Points
+
+1. **Include the header:**
+```cpp
+#include "Tasks/Task.h"
+using namespace UE::Tasks;  // Optional
+```
+
+2. **Replace simple AsyncTask calls:**
+```cpp
+// Old
+AsyncTask(ENamedThreads::AnyThread, []() { Work(); });
+
+// New
+UE::Tasks::Launch(UE_SOURCE_LOCATION, []() { Work(); });
+```
+
+3. **Game thread callbacks stay the same:**
+```cpp
+// Both old and new still use AsyncTask for game thread
+AsyncTask(ENamedThreads::GameThread, []() {
+    // UObject access
+});
+```
+
+4. **Add UE_SOURCE_LOCATION for better debugging:**
+- First parameter should be `UE_SOURCE_LOCATION` or a descriptive TEXT("TaskName")
+- Helps with profiling in Unreal Insights
+
+---
+
 ## When to Use What
 
 | Use Case | Recommended Approach |
 |----------|---------------------|
-| Simple background calculation | `UE::Tasks::Launch` |
-| Complex task dependencies | `Tasks::FTask` with Prerequisites |
-| UObject modification | `AsyncTask(ENamedThreads::GameThread)` |
-| Parallel data processing | Multiple `Tasks::FTask` with `Wait()` |
-| Background loading with game thread callback | Background task → Game thread AsyncTask |
-| Legacy code maintenance | Continue using `AsyncTask` |
-| Real-time continuous work | Ticker delegate or Named Thread |
+| **New UE5 code** - Background calculation | `UE::Tasks::Launch` ✅ |
+| **New UE5 code** - Complex task dependencies | `Tasks::FTask` with Prerequisites ✅ |
+| **Any version** - UObject modification | `AsyncTask(ENamedThreads::GameThread)` ✅ |
+| **New UE5 code** - Parallel data processing | Multiple `Tasks::FTask` with `Wait()` ✅ |
+| **Any version** - Game thread callback | Background task → `AsyncTask(GameThread)` ✅ |
+| **Legacy UE4 code** - Maintenance | Continue using `AsyncTask` ✅ |
+| **Any version** - Real-time continuous work | Ticker delegate or Named Thread ✅ |
+| **Simple thread dispatch** - Either version | `AsyncTask` or `Tasks::Launch` (both fine) ✅ |
 
 ---
 
@@ -834,17 +988,21 @@ for (int i = 0; i < Items.Num(); i += BatchSize) {
 
 ## Additional Resources
 
-- [Unreal Engine Documentation: Task System](https://docs.unrealengine.com/5.0/en-US/tasks-systems-in-unreal-engine/)
-- [Unreal Engine Documentation: Async](https://docs.unrealengine.com/5.0/en-US/asynchronous-asset-loading-in-unreal-engine/)
-- [Unreal Insights Profiler](https://docs.unrealengine.com/5.0/en-US/unreal-insights-in-unreal-engine/)
-- [Unreal Engine Source: Task.h](https://github.com/EpicGames/UnrealEngine/blob/release/Engine/Source/Runtime/Core/Public/Tasks/Task.h)
+- [Tasks Systems in Unreal Engine](https://dev.epicgames.com/documentation/en-us/unreal-engine/tasks-systems-in-unreal-engine) - Official UE5 documentation
+- [How to use async task in Unreal Engine](https://georgy.dev/posts/async-task/) - Community guide comparing AsyncTask and newer approaches
+- [FTasks in Unreal Engine 5](https://gdtactics.com/ftasks-in-unreal-engine-5) - Modern Tasks System tutorial
+- [Unreal Insights Profiler](https://docs.unrealengine.com/5.0/en-US/unreal-insights-in-unreal-engine/) - Profiling async tasks
+- [Unreal Engine Source: Task.h](https://github.com/EpicGames/UnrealEngine/blob/release/Engine/Source/Runtime/Core/Public/Tasks/Task.h) - Source code reference
+- [Using AsyncTasks (Community Wiki)](https://unrealcommunity.wiki/using-asynctasks-1jpclff4) - Legacy AsyncTask guide
 
 ## Quick Reference Card
 
 ```cpp
-// Launch a task
+// ===== MODERN UE5 APPROACH (Recommended) =====
+
+// Launch a task (UE5+)
 UE::Tasks::FTask Task = UE::Tasks::Launch(
-    TEXT("TaskName"),
+    UE_SOURCE_LOCATION,  // For debugging
     []() { /* Work */ },
     UE::Tasks::ETaskPriority::Normal  // Optional
 );
@@ -856,9 +1014,9 @@ TResult Result = Task.GetResult();
 // Check without blocking
 if (Task.IsCompleted()) { }
 
-// Dependencies
+// Dependencies (only with Tasks::FTask!)
 auto Task2 = UE::Tasks::Launch(
-    TEXT("Dependent"),
+    UE_SOURCE_LOCATION,
     []() { /* Work */ },
     UE::Tasks::Prerequisites(Task1)
 );
@@ -866,19 +1024,29 @@ auto Task2 = UE::Tasks::Launch(
 // Multiple tasks
 UE::Tasks::Wait(TArray{Task1, Task2, Task3});
 
-// Game thread callback
-UE::Tasks::Launch(TEXT("BG"), []() {
+// Game thread callback (use AsyncTask even with Tasks::FTask)
+UE::Tasks::Launch(UE_SOURCE_LOCATION, []() {
     auto Result = HeavyWork();
     AsyncTask(ENamedThreads::GameThread, [Result]() {
         // Safe for UObjects
     });
 });
 
-// Legacy AsyncTask
+// ===== LEGACY ASYNCTASK (Still Supported) =====
+
+// Background work (UE4/UE5)
 AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, []() {
     // Background work
 });
+
+// Game thread (UE4/UE5 - use this with both approaches!)
 AsyncTask(ENamedThreads::GameThread, []() {
-    // Game thread work
+    // Game thread work - safe for UObjects
 });
 ```
+
+**Summary:**
+- ✅ **New UE5 projects:** Use `UE::Tasks::Launch` for background work
+- ✅ **All versions:** Use `AsyncTask(GameThread, ...)` for UObject access
+- ✅ **Legacy UE4 code:** Keep using `AsyncTask`, it's not deprecated
+- ✅ **Both use the same TaskGraph backend** - same performance!

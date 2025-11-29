@@ -26,12 +26,15 @@ Master memory management in Unreal Engine with comprehensive coverage of:
 **Status:** ✅ Complete
 
 Master asynchronous and parallel programming in Unreal Engine:
-- Tasks::FTask (UE5 modern API)
-- Legacy AsyncTask system
+- Tasks::FTask (UE5 modern API - recommended)
+- AsyncTask system (legacy but still fully supported)
+- Migration guide from AsyncTask to Tasks::FTask
 - Task dependencies and chaining
 - Game thread safety and UObject access
 - Performance optimization and batching
 - Common parallel patterns
+
+**Note:** AsyncTask is NOT deprecated - it's fully supported in UE5, but Epic recommends Tasks::FTask for new code due to better features (dependencies, return values, debugging).
 
 **Location:** `Module02_TaskSystem/`
 
